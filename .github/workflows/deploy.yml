@@ -1,0 +1,22 @@
+name: Deploy Production
+on:
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: 'npm'}
+      - name: Build when configured
+        run: |
+          if test -f package.json; then npm ci && npm run build --if-present; fi
+      - name: Select output
+        run: |
+          if test -d dist; then echo 'OUTPUT=dist' >> "$GITHUB_ENV"; elif test -d build; then echo 'OUTPUT=build' >> "$GITHUB_ENV"; else echo 'OUTPUT=.' >> "$GITHUB_ENV"; fi
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ${{ env.OUTPUT }} --project-name=${{ vars.CLOUDFLARE_PROJECT_NAME }} --branch=main

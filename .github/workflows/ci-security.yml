@@ -1,0 +1,54 @@
+name: CI and Security
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        if: ${{ hashFiles('package.json') != '' }}
+        with: {node-version: '22', cache: 'npm'}
+      - name: Node checks
+        if: ${{ hashFiles('package.json') != '' }}
+        run: |
+          npm ci
+          npm run lint --if-present
+          npm test --if-present
+          npm run build --if-present
+          npm audit --audit-level=high
+      - uses: actions/setup-python@v5
+        if: ${{ hashFiles('pyproject.toml', 'requirements.txt') != '' }}
+        with: {python-version: '3.12'}
+      - name: Python checks
+        if: ${{ hashFiles('pyproject.toml', 'requirements.txt') != '' }}
+        run: |
+          python -m pip install --upgrade pip
+          test ! -f requirements.txt || pip install -r requirements.txt
+          test ! -f pyproject.toml || pip install .
+          python -m compileall .
+          if find . -maxdepth 3 -type f -name 'test_*.py' | grep -q .; then python -m pytest; fi
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
